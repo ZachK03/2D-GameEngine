@@ -25,16 +25,16 @@ Animation::Animation(const std::string& name, const sf::Texture& t, size_t frame
 //Animation loops until it reaches the end
 void Animation::update()
 {
-	//Add speed variable to current frame
-	m_currentFrame++;
-	if (m_currentFrame == (m_speed * m_frameCount))
-		m_currentFrame = 0;
-
 	if(m_speed != 0)
 		m_sprite.setTextureRect(sf::IntRect(std::floor(m_currentFrame / m_speed) * m_size.x, 0, m_size.x, m_size.y));
-	//TODO: 1) Calculate the correct frame of animation to play based on currentFrame and speed
-	//		2) set the texture rectangle properly (see constructor for sample)
 	
+	//If frame is equal to the last animation frame, reset and mark as ended
+	m_currentFrame++;
+	if (m_currentFrame == (m_speed * m_frameCount))
+	{
+		m_ended = true;
+		m_currentFrame = 0;
+	}
 }
 
 const Vec2& Animation::getSize() const
@@ -54,6 +54,5 @@ sf::Sprite& Animation::getSprite()
 
 bool Animation::hasEnded() const
 {
-	//TODO : Detect when animation has ended and return true
-	return false;
+	return m_ended;
 }

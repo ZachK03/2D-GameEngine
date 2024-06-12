@@ -26,6 +26,8 @@ void Scene_Play::init(const std::string& levelPath)
 	registerAction(sf::Keyboard::A, "LEFT");
 	registerAction(sf::Keyboard::D, "RIGHT");
 	registerAction(sf::Keyboard::S, "DOWN");
+	registerAction(sf::Keyboard::Space, "STOP");
+	registerAction(sf::Keyboard::R, "RESET");
 
 	m_gridText.setCharacterSize(12);
 	//m_gridText.setFont(m_game->assets().getFont("Tech"));
@@ -53,11 +55,24 @@ void Scene_Play::loadLevel(const std::string& filename)
 
 	spawnPlayer();
 
-	auto brick = m_entityManager.addEntity("tile");
+	for (int i = 0; i < 10; i++)
+	{
+		auto ground = m_entityManager.addEntity("tile");
+		ground->addComponent<CAnimation>(m_game->assets().getAnimation("Ground"), true);
+		ground->addComponent<CTransform>(Vec2(32+(i * 64), 480));
+		ground->addComponent<CBoundingBox>(Vec2(64, 64));
+	}
+
+	for (int i = 3; i < 7; i++)
+	{
+		auto ground = m_entityManager.addEntity("brick");
+		ground->addComponent<CAnimation>(m_game->assets().getAnimation("Brick"), true);
+		ground->addComponent<CTransform>(Vec2(32 + (i * 64), 224));
+		ground->addComponent<CBoundingBox>(Vec2(64, 64));
+	}
+	
 	// Add CAnimation component first so gridToMidPixel can compute
-	brick->addComponent<CAnimation>(m_game->assets().getAnimation("Brick"), true);
-	brick->addComponent<CTransform>(Vec2(96, 480));
-	brick->addComponent<CBoundingBox>(Vec2(64, 64));
+	
 	//Position should be read from the grid x,y position from file
 	//brick->addComponent<CTransform>(gridToMidPixel(gridX,gridY,brick));
 
@@ -79,7 +94,8 @@ void Scene_Play::spawnPlayer()
 	m_player->addComponent<CBoundingBox>(Vec2(48, 48));
 	m_player->addComponent<CInput>();
 	m_player->addComponent<CState>("state");
-	//m_player->addComponent<CGravity>(0.1f);
+	m_player->addComponent<CGravity>(0.1f);
+	//m_player->addComponent<CGravity>(9.8f, 62.0f); WITH MASS
 
 	//Add remaining components to player
 }
@@ -113,8 +129,8 @@ void Scene_Play::sMovement()
 	Vec2 vel = { 0.0, m_player->getComponent<CTransform>().velocity.y };
 	if (input.up) vel.y += -1.0f;
 	if (input.down) vel.y += 1.0f;
-	if (input.left) vel.x += -1.0f;
-	if (input.right) vel.x += 1.0f;
+	if (input.left) vel.x += -1.5f;
+	if (input.right) vel.x += 1.5f;
 
 	auto& transform = m_player->getComponent<CTransform>();
 	transform.velocity = vel;
@@ -132,11 +148,28 @@ void Scene_Play::sMovement()
 		{
 			auto& eTrans = e->getComponent<CTransform>();
 			if (e->hasComponent<CGravity>())
-				eTrans.velocity.y += e->getComponent<CGravity>().gravity;
+			{
+				if (e->hasComponent<CState>())
+				{
+					if(!e->getComponent<CState>().isTouchingGround)
+						eTrans.velocity.y += e->getComponent<CGravity>().gravity;
+				}
+				else
+				{
+					eTrans.velocity.y += e->getComponent<CGravity>().gravity;
+				}
+			}
+			if (e->hasComponent<CState>() && eTrans.velocity.y < 0)
+				e->getComponent<CState>().isTouchingGround = false;
 			if (eTrans.velocity.x > 5)
 				eTrans.velocity.x = 5;
 			if (eTrans.velocity.y > 5)
 				eTrans.velocity.y = 5;
+			if (eTrans.velocity.x < -5)
+				eTrans.velocity.x = -5;
+			if (eTrans.velocity.y < -5)
+				eTrans.velocity.y = -5;
+			eTrans.prevPos = eTrans.pos;
 			eTrans.pos += eTrans.velocity;
 			if (eTrans.velocity.x < 0) {
 				eTrans.scale.x = -1.0f;
@@ -155,6 +188,7 @@ void Scene_Play::sCollision()
 	//Gravity will have a POSITIVE y-component
 
 	//TODO: Implement Physics::GetOverlap(), use it in this function
+	bool playerTouchingGround = false;
 	for (auto e : m_entityManager.getEntities())
 	{
 		if (e->hasComponent<CBoundingBox>())
@@ -163,18 +197,76 @@ void Scene_Play::sCollision()
 			if (e != m_player)
 			{
 				Vec2 overlap = m_game->physics().GetOverlap(m_player, e);
+				auto& transform = m_player->getComponent<CTransform>();
 				if (overlap.x > 0 && overlap.y > 0)
 				{
-					auto& transform = m_player->getComponent<CTransform>();
-					Vec2 posChangeNormalize = transform.prevPos.normalize(transform.pos);
-					float angle = transform.prevPos.angle(transform.pos);
-					
-					std::cout << "Overlap X: " << overlap.x << ". Overlap Y: " << overlap.y << std::endl;
 					std::cout << "Overlapping!" << std::endl;
+					std::cout << "Overlap X: " << overlap.x << ". Overlap Y: " << overlap.y << std::endl;
+
+					Vec2 prevOverlap = m_game->physics().GetPreviousOverlap(m_player, e);
+
+					if (prevOverlap.x > 0)
+					{
+						//Overlaps vertically
+						if (transform.prevPos.y < transform.pos.y)
+						{
+							//From the top
+							transform.pos.y -= overlap.y;
+							playerTouchingGround = true;
+						}
+						else {
+							//From the bottom
+							transform.pos.y += overlap.y;
+							if (e->tag() == "brick")
+							{
+								e->destroy();
+							}
+						}
+						transform.velocity.y = 0;
+					}
+					else if (prevOverlap.y > 0)
+					{
+						//Overlaps horizontally
+						if (transform.prevPos.x < transform.pos.x)
+						{
+							//From the left
+							transform.pos.x -= overlap.x;
+						}
+						else {
+							//From the right
+							transform.pos.x += overlap.x;
+						}
+					}
+					else
+					{
+						//Overlaps diagonally, correct horizontally
+						if (transform.prevPos.x < transform.pos.x)
+						{
+							//From the left
+							transform.pos.x -= overlap.x;
+						}
+						else {
+							//From the right
+							transform.pos.x += overlap.x;
+						}
+					}
+				}
+				else if (!playerTouchingGround)
+				{
+					Vec2 tempPos = transform.pos;
+					transform.pos.y += 0.2;
+					Vec2 testGround = m_game->physics().GetOverlap(m_player, e);
+					playerTouchingGround = (testGround.x > 0 && testGround.y > 0);
+					transform.pos = tempPos;
 				}
 			}
 		}
 	}
+	if (playerTouchingGround)
+	{
+		std::cout << "Touching ground" << std::endl;
+	}
+	m_player->getComponent<CState>().isTouchingGround = playerTouchingGround;
 
 	//TODO: Implement bullet/tile collisions
 	//TODO: Implement player/tile collisions
@@ -187,7 +279,7 @@ void Scene_Play::sDoAction(const Action& action)
 {
 	if (action.type() == "START")
 	{
-			 if (action.name() == "TOGGLE_TEXTURE") { m_drawTextures = !m_drawTextures; }
+		if (action.name() == "TOGGLE_TEXTURE") { m_drawTextures = !m_drawTextures; }
 		else if (action.name() == "TOGGLE_COLLISION") { m_drawCollision = !m_drawCollision; }
 		else if (action.name() == "TOGGLE_GRID") { m_drawGrid = !m_drawGrid; }
 		else if (action.name() == "PAUSE") { setPaused(!m_paused); }
@@ -196,6 +288,8 @@ void Scene_Play::sDoAction(const Action& action)
 		else if (action.name() == "LEFT") { m_player->getComponent<CInput>().left = true; }
 		else if (action.name() == "RIGHT") { m_player->getComponent<CInput>().right = true; }
 		else if (action.name() == "DOWN") { m_player->getComponent<CInput>().down = true; }
+		else if (action.name() == "STOP") { m_player->getComponent<CTransform>().velocity = { 0,0 }; }
+		else if (action.name() == "RESET") { m_player->getComponent<CTransform>().pos = { 64, 64 }; }
 	}
 	else if (action.type() == "END")
 	{
@@ -257,9 +351,9 @@ void Scene_Play::sRender()
 
 	uint8_t alpha = m_paused ? 127 : 255;
 
-	if (m_drawTextures)
+	for (auto e : m_entityManager.getEntities())
 	{
-		for (auto e : m_entityManager.getEntities())
+		if (m_drawTextures)
 		{
 			auto& eTransform = e->getComponent<CTransform>();
 
@@ -273,11 +367,7 @@ void Scene_Play::sRender()
 				m_game->window().draw(anim.getSprite());
 			}
 		}
-	}
-
-	if (m_drawCollision)
-	{
-		for (auto e : m_entityManager.getEntities())
+		if (m_drawCollision)
 		{
 			if (e->hasComponent<CBoundingBox>())
 			{

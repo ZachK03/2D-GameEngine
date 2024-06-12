@@ -100,13 +100,17 @@ public:
 class CGravity : public Component {
 public:
 	float gravity = 0.0;
+	float mass = 10.0;
 
 	CGravity() {}
 	CGravity(float g)
 		: gravity(g) {}
+	CGravity(float g, float m)
+		: gravity(g), mass(m) {}
 };
 class CState : public Component {
 public:
+	bool isTouchingGround = false;
 	std::string state = "jumping";
 	CState() {}
 	CState(const std::string& s) : state(s) {}
