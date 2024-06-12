@@ -108,7 +108,6 @@ void Scene_Play::spawnBullet(std::shared_ptr<Entity> entity)
 void Scene_Play::update()
 {
 	m_entityManager.update();
-	//Implement pause functionality
 	if (!m_paused)
 	{
 		sMovement();
@@ -121,10 +120,6 @@ void Scene_Play::update()
 
 void Scene_Play::sMovement()
 {
-	//TODO: Implement player movement and jumping based on CInput component
-	//TODO: Implement gravity effect on player
-	//TODO: Implement max speed on both X and Y directions
-	//Setting an entity's scale.x to -1/1 will make it face left/right
 	auto& input = m_player->getComponent<CInput>();
 	Vec2 vel = { 0.0, m_player->getComponent<CTransform>().velocity.y };
 	if (input.up) vel.y += -1.0f;
@@ -187,13 +182,11 @@ void Scene_Play::sCollision()
 	//Jumping will have a NEGATIVE y-component
 	//Gravity will have a POSITIVE y-component
 
-	//TODO: Implement Physics::GetOverlap(), use it in this function
 	bool playerTouchingGround = false;
 	for (auto e : m_entityManager.getEntities())
 	{
 		if (e->hasComponent<CBoundingBox>())
 		{
-			//TODO : FIX
 			if (e != m_player)
 			{
 				Vec2 overlap = m_game->physics().GetOverlap(m_player, e);
@@ -269,7 +262,6 @@ void Scene_Play::sCollision()
 	m_player->getComponent<CState>().isTouchingGround = playerTouchingGround;
 
 	//TODO: Implement bullet/tile collisions
-	//TODO: Implement player/tile collisions
 	//Update CState component to store whether in the air or on the ground.
 	//TODO: Check if player has fallen down a hole, y > height();
 	//TODO: Don't let player walk off left side of the map
