@@ -37,11 +37,16 @@ void Scene_Play::init(const std::string& levelPath)
 
 Vec2 Scene_Play::gridToMidPixel(float gridX, float gridY, std::shared_ptr<Entity> entity)
 {
+	auto& anim = entity->getComponent<CAnimation>();
+	Vec2 animSize = anim.animation.getSize();
+	Vec2 pixelPosition;
+	pixelPosition.x = m_gridSize.x * gridX + (animSize.x / 2);
+	pixelPosition.y = m_game->window().getSize().y - (m_gridSize.y * gridY + (animSize.y / 2));
 	//Return Vec2 indicating CENTER of where the entity should be
 	//Animation size center
 	//m_gridSize.x and m_gridSize.y
 	//Bottom left should be in the bottom left of the gridX and gridY
-	return Vec2(0, 0);
+	return pixelPosition;
 }
 
 void Scene_Play::loadLevel(const std::string& filename)
@@ -59,45 +64,31 @@ void Scene_Play::loadLevel(const std::string& filename)
 	{
 		auto ground = m_entityManager.addEntity("tile");
 		ground->addComponent<CAnimation>(m_game->assets().getAnimation("Ground"), true);
-		ground->addComponent<CTransform>(Vec2(32+(i * 64), 480));
+		ground->addComponent<CTransform>(gridToMidPixel(i,1,ground));
 		ground->addComponent<CBoundingBox>(Vec2(64, 64));
 	}
 
 	for (int i = 3; i < 7; i++)
 	{
-		auto ground = m_entityManager.addEntity("brick");
-		ground->addComponent<CAnimation>(m_game->assets().getAnimation("Brick"), true);
-		ground->addComponent<CTransform>(Vec2(32 + (i * 64), 224));
-		ground->addComponent<CBoundingBox>(Vec2(64, 64));
+		auto brick = m_entityManager.addEntity("tile");
+		brick->addComponent<CAnimation>(m_game->assets().getAnimation("Brick"), true);
+		brick->addComponent<CTransform>(gridToMidPixel(i, 4, brick));
+		brick->addComponent<CBoundingBox>(Vec2(64, 64));
 	}
 	
-	// Add CAnimation component first so gridToMidPixel can compute
-	
-	//Position should be read from the grid x,y position from file
-	//brick->addComponent<CTransform>(gridToMidPixel(gridX,gridY,brick));
-
-	//if (brick->getComponent<CAnimation>().animation.getName() == "Brick")
-	//{
-
-	//}
-
-	//Components are now returned as references and not pointers
-	//If you don't specify a variable type it will COPY the component
-
+	//if (brick->getComponent<CAnimation>().animation.getName() == "Brick") {} Detect brick entity
 }
 
 void Scene_Play::spawnPlayer()
 {
 	m_player = m_entityManager.addEntity("player");
 	m_player->addComponent<CAnimation>(m_game->assets().getAnimation("Stand"), true);
-	m_player->addComponent<CTransform>(Vec2(64, 64));
+	m_player->addComponent<CTransform>(gridToMidPixel(1, 3, m_player));
 	m_player->addComponent<CBoundingBox>(Vec2(48, 48));
 	m_player->addComponent<CInput>();
 	m_player->addComponent<CState>("state");
-	m_player->addComponent<CGravity>(0.1f);
+	m_player->addComponent<CGravity>(0.2f);
 	//m_player->addComponent<CGravity>(9.8f, 62.0f); WITH MASS
-
-	//Add remaining components to player
 }
 
 void Scene_Play::spawnBullet(std::shared_ptr<Entity> entity)
@@ -122,10 +113,10 @@ void Scene_Play::sMovement()
 {
 	auto& input = m_player->getComponent<CInput>();
 	Vec2 vel = { 0.0, m_player->getComponent<CTransform>().velocity.y };
-	if (input.up) vel.y += -1.0f;
-	if (input.down) vel.y += 1.0f;
-	if (input.left) vel.x += -1.5f;
-	if (input.right) vel.x += 1.5f;
+	if (input.up && input.canJump) vel.y += -1.5f;
+	//if (input.down) vel.y += 1.0f;
+	if (input.left) vel.x += -3.5f;
+	if (input.right) vel.x += 3.5f;
 
 	auto& transform = m_player->getComponent<CTransform>();
 	transform.velocity = vel;
@@ -146,7 +137,7 @@ void Scene_Play::sMovement()
 			{
 				if (e->hasComponent<CState>())
 				{
-					if(!e->getComponent<CState>().isTouchingGround)
+					if (!e->getComponent<CState>().isTouchingGround)
 						eTrans.velocity.y += e->getComponent<CGravity>().gravity;
 				}
 				else
@@ -156,16 +147,23 @@ void Scene_Play::sMovement()
 			}
 			if (e->hasComponent<CState>() && eTrans.velocity.y < 0)
 				e->getComponent<CState>().isTouchingGround = false;
-			if (eTrans.velocity.x > 5)
-				eTrans.velocity.x = 5;
-			if (eTrans.velocity.y > 5)
-				eTrans.velocity.y = 5;
-			if (eTrans.velocity.x < -5)
-				eTrans.velocity.x = -5;
-			if (eTrans.velocity.y < -5)
-				eTrans.velocity.y = -5;
+			if (eTrans.velocity.x > 9.0)
+				eTrans.velocity.x = 9.0;
+			if (eTrans.velocity.y > 9.0)
+				eTrans.velocity.y = 9.0;
+			if (eTrans.velocity.x < -9.0)
+				eTrans.velocity.x = -9.0;
+			if (eTrans.velocity.y < -9.0) 
+			{
+				eTrans.velocity.y = -9.0;
+				input.canJump = false;
+			}
 			eTrans.prevPos = eTrans.pos;
 			eTrans.pos += eTrans.velocity;
+			if (eTrans.pos.x - e->getComponent<CBoundingBox>().halfSize.x < 0)
+			{
+				eTrans.pos.x = e->getComponent<CBoundingBox>().halfSize.x;
+			}
 			if (eTrans.velocity.x < 0) {
 				eTrans.scale.x = -1.0f;
 			} else if(eTrans.velocity.x > 0) {
@@ -174,15 +172,18 @@ void Scene_Play::sMovement()
 		}
 	}
 
+	if (transform.pos.y > m_game->window().getSize().y)
+	{
+		transform.pos = transform.initialPos;
+	}
+
 }
 
 void Scene_Play::sCollision()
 {
-	//SFML's (0,0) is TOP-LEFT corner
-	//Jumping will have a NEGATIVE y-component
-	//Gravity will have a POSITIVE y-component
-
 	bool playerTouchingGround = false;
+
+	//Tile collision
 	for (auto e : m_entityManager.getEntities())
 	{
 		if (e->hasComponent<CBoundingBox>())
@@ -210,7 +211,7 @@ void Scene_Play::sCollision()
 						else {
 							//From the bottom
 							transform.pos.y += overlap.y;
-							if (e->tag() == "brick")
+							if (e->getComponent<CAnimation>().animation.getName() == "Brick")
 							{
 								e->destroy();
 							}
@@ -257,14 +258,11 @@ void Scene_Play::sCollision()
 	}
 	if (playerTouchingGround)
 	{
-		std::cout << "Touching ground" << std::endl;
+		m_player->getComponent<CInput>().canJump = true;
 	}
 	m_player->getComponent<CState>().isTouchingGround = playerTouchingGround;
 
 	//TODO: Implement bullet/tile collisions
-	//Update CState component to store whether in the air or on the ground.
-	//TODO: Check if player has fallen down a hole, y > height();
-	//TODO: Don't let player walk off left side of the map
 }
 
 void Scene_Play::sDoAction(const Action& action)
@@ -281,11 +279,13 @@ void Scene_Play::sDoAction(const Action& action)
 		else if (action.name() == "RIGHT") { m_player->getComponent<CInput>().right = true; }
 		else if (action.name() == "DOWN") { m_player->getComponent<CInput>().down = true; }
 		else if (action.name() == "STOP") { m_player->getComponent<CTransform>().velocity = { 0,0 }; }
-		else if (action.name() == "RESET") { m_player->getComponent<CTransform>().pos = { 64, 64 }; }
+		else if (action.name() == "RESET") { 
+			m_player->getComponent<CTransform>().pos = m_player->getComponent<CTransform>().initialPos; 
+		}
 	}
 	else if (action.type() == "END")
 	{
-			 if (action.name() == "UP") { m_player->getComponent<CInput>().up = false; }
+		if (action.name() == "UP") { m_player->getComponent<CInput>().up = false; m_player->getComponent<CInput>().canJump = false; }
 		else if (action.name() == "LEFT") { m_player->getComponent<CInput>().left = false; }
 		else if (action.name() == "RIGHT") { m_player->getComponent<CInput>().right = false; }
 		else if (action.name() == "DOWN") { m_player->getComponent<CInput>().down = false; }
@@ -294,7 +294,6 @@ void Scene_Play::sDoAction(const Action& action)
 
 void Scene_Play::sAnimation()
 {
-	//TODO: Complete Animation class first
 	//TODO: Set animation based on CState component
 	//TODO: For each entity with an animation call ent->getComponent<CAnimation>().animation.update();
 	//If animation doesn't repeat and has finished, destroy entity
@@ -314,7 +313,10 @@ void Scene_Play::sAnimation()
 	{
 		if (e->hasComponent<CAnimation>())
 		{
-			e->getComponent<CAnimation>().animation.update();
+			auto& anim = e->getComponent<CAnimation>();
+			anim.animation.update();
+			if (anim.animation.hasEnded() && !anim.repeat)
+				e->destroy();
 		}
 	}
 }

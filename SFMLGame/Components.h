@@ -18,13 +18,14 @@ public:
 	Vec2 prevPos = { 0.0, 0.0 };
 	Vec2 scale = { 1.0, 1.0 };
 	Vec2 velocity = { 0.0, 0.0 };
+	Vec2 initialPos = { 0.0, 0.0 };
 	float angle = 0;
 
 	CTransform() {}
 	CTransform(const Vec2& p)
-		: pos(p) {}
+		: pos(p), initialPos(p) {}
 	CTransform(const Vec2& p, const Vec2& v, const Vec2& sc, float a)
-		: pos{ p }, prevPos(p), velocity{ v }, scale{sc}, angle {a} {}
+		: pos{ p }, initialPos(p), prevPos(p), velocity{ v }, scale{sc}, angle {a} {}
 };
 
 class CShape : public Component {
