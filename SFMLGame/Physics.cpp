@@ -9,7 +9,10 @@ Vec2 Physics::GetOverlap(std::shared_ptr<Entity> a, std::shared_ptr<Entity> b) c
 	auto& bBB = b->getComponent<CBoundingBox>();
 	auto& aT = a->getComponent<CTransform>();
 	auto& bT = b->getComponent<CTransform>();
-	return Vec2((aBB.halfSize.x + bBB.halfSize.x) - std::abs((float)aT.pos.x - bT.pos.x), (aBB.halfSize.y + bBB.halfSize.y) - std::abs((float)aT.pos.y - bT.pos.y));
+	return Vec2(
+		(aBB.halfSize.x + bBB.halfSize.x) - std::abs((float)aT.pos.x - bT.pos.x), 
+		(aBB.halfSize.y + bBB.halfSize.y) - std::abs((float)aT.pos.y - bT.pos.y)
+	);
 }
 
 Vec2 Physics::GetPreviousOverlap(std::shared_ptr<Entity> a, std::shared_ptr<Entity> b) const

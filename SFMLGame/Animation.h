@@ -11,6 +11,7 @@ class Animation
 	size_t		m_speed			= 0;
 	Vec2		m_size			= { 1,1 };
 	std::string m_name			= "none";
+	bool		m_ended			= false;
 public:
 	Animation();
 	Animation(const std::string& name, const sf::Texture& t);
