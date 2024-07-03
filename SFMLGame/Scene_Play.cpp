@@ -33,6 +33,8 @@ void Scene_Play::init(const std::string& levelPath)
 	//m_gridText.setFont(m_game->assets().getFont("Tech"));
 
 	loadLevel(levelPath);
+
+	introTextStop = currentFrame() + (60 * 5);
 }
 
 Vec2 Scene_Play::gridToMidPixel(float gridX, float gridY, std::shared_ptr<Entity> entity)
@@ -42,10 +44,6 @@ Vec2 Scene_Play::gridToMidPixel(float gridX, float gridY, std::shared_ptr<Entity
 	Vec2 pixelPosition;
 	pixelPosition.x = m_gridSize.x * gridX + (animSize.x / 2);
 	pixelPosition.y = m_game->window().getSize().y - (m_gridSize.y * gridY + (animSize.y / 2));
-	//Return Vec2 indicating CENTER of where the entity should be
-	//Animation size center
-	//m_gridSize.x and m_gridSize.y
-	//Bottom left should be in the bottom left of the gridX and gridY
 	return pixelPosition;
 }
 
@@ -57,10 +55,39 @@ void Scene_Play::loadLevel(const std::string& filename)
 	//TODO : Read level file and add the appropriate entities
 	//Use playerConfig struct to store player properties
 	//Defined in Scene_Play.h
+	std::ifstream fin(filename);
+
+	if (!fin.is_open()) {
+		std::cout << "Failed to open file\n";
+	}
+	std::string mode;
+	while (fin >> mode) {
+		if (mode == "Name")
+		{
+			std::getline(fin, m_levelName);
+			if (m_levelName[0] == ' ')
+				m_levelName.erase(0,1);
+		}
+		if (mode == "Tile")
+		{
+			std::string anim;
+			float gridX, gridY;
+			fin >> anim >> gridX >> gridY;
+			auto tile = m_entityManager.addEntity("tile");
+			tile->addComponent<CAnimation>(m_game->assets().getAnimation(anim), true);
+			tile->addComponent<CTransform>(gridToMidPixel(gridX, gridY, tile));
+			tile->addComponent<CBoundingBox>(Vec2(64, 64));
+		}
+		if (mode == "Player")
+		{
+			fin >> m_playerConfig.X >> m_playerConfig.Y >> m_playerConfig.CX >> m_playerConfig.CY >> m_playerConfig.SPEED
+				>> m_playerConfig.MAXSPEED >> m_playerConfig.JUMP >> m_playerConfig.GRAVITY >> m_playerConfig.WEAPON;
+		}
+	}
 
 	spawnPlayer();
 
-	for (int i = 0; i < 10; i++)
+	/*for (int i = 0; i < 10; i++)
 	{
 		auto ground = m_entityManager.addEntity("tile");
 		ground->addComponent<CAnimation>(m_game->assets().getAnimation("Ground"), true);
@@ -74,7 +101,7 @@ void Scene_Play::loadLevel(const std::string& filename)
 		brick->addComponent<CAnimation>(m_game->assets().getAnimation("Brick"), true);
 		brick->addComponent<CTransform>(gridToMidPixel(i, 4, brick));
 		brick->addComponent<CBoundingBox>(Vec2(64, 64));
-	}
+	}*/
 	
 	//if (brick->getComponent<CAnimation>().animation.getName() == "Brick") {} Detect brick entity
 }
@@ -83,11 +110,11 @@ void Scene_Play::spawnPlayer()
 {
 	m_player = m_entityManager.addEntity("player");
 	m_player->addComponent<CAnimation>(m_game->assets().getAnimation("Stand"), true);
-	m_player->addComponent<CTransform>(gridToMidPixel(1, 3, m_player));
-	m_player->addComponent<CBoundingBox>(Vec2(48, 48));
+	m_player->addComponent<CTransform>(gridToMidPixel(m_playerConfig.X, m_playerConfig.Y, m_player));
+	m_player->addComponent<CBoundingBox>(Vec2(m_playerConfig.CX, m_playerConfig.CY));
 	m_player->addComponent<CInput>();
 	m_player->addComponent<CState>("state");
-	m_player->addComponent<CGravity>(0.2f);
+	m_player->addComponent<CGravity>(m_playerConfig.GRAVITY);
 	//m_player->addComponent<CGravity>(9.8f, 62.0f); WITH MASS
 }
 
@@ -99,11 +126,14 @@ void Scene_Play::spawnBullet(std::shared_ptr<Entity> entity)
 void Scene_Play::update()
 {
 	m_entityManager.update();
+	if (m_currentFrame > introTextStop)
+		gameStarted = true;
 	if (!m_paused)
 	{
 		sMovement();
 		sLifespan();
 		sCollision();
+		m_currentFrame++;
 	}
 	sAnimation();
 	sRender();
@@ -248,7 +278,7 @@ void Scene_Play::sCollision()
 				else if (!playerTouchingGround)
 				{
 					Vec2 tempPos = transform.pos;
-					transform.pos.y += 0.2;
+					transform.pos.y += 0.2f;
 					Vec2 testGround = m_game->physics().GetOverlap(m_player, e);
 					playerTouchingGround = (testGround.x > 0 && testGround.y > 0);
 					transform.pos = tempPos;
@@ -267,6 +297,7 @@ void Scene_Play::sCollision()
 
 void Scene_Play::sDoAction(const Action& action)
 {
+	if (!gameStarted) return;
 	if (action.type() == "START")
 	{
 		if (action.name() == "TOGGLE_TEXTURE") { m_drawTextures = !m_drawTextures; }
@@ -294,9 +325,6 @@ void Scene_Play::sDoAction(const Action& action)
 
 void Scene_Play::sAnimation()
 {
-	//TODO: Set animation based on CState component
-	//TODO: For each entity with an animation call ent->getComponent<CAnimation>().animation.update();
-	//If animation doesn't repeat and has finished, destroy entity
 	auto& state = m_player->getComponent<CState>();
 	auto& anim = m_player->getComponent<CAnimation>();
 	if (state.state == "stand" && anim.animation.getName() != "Stand")
@@ -343,7 +371,19 @@ void Scene_Play::sRender()
 	view.setCenter(windowCenterX, m_game->window().getSize().y - view.getCenter().y);
 	m_game->window().setView(view);
 
-	uint8_t alpha = m_paused ? 127 : 255;
+	uint8_t alpha = (m_paused || !gameStarted) ? 127 : 255;
+
+	if (!gameStarted)
+	{
+		sf::Text levelNameText;
+		levelNameText.setString(m_levelName);
+		levelNameText.setFont(m_game->assets().getFont("Firacode"));
+		levelNameText.setCharacterSize(72);
+		sf::FloatRect textRect = levelNameText.getLocalBounds();
+		levelNameText.setOrigin(textRect.left + textRect.width / 2.0f, textRect.top + textRect.height / 2.0f);
+		levelNameText.setPosition(m_game->window().getView().getCenter());
+		m_game->window().draw(levelNameText);
+	}
 
 	for (auto e : m_entityManager.getEntities())
 	{
@@ -387,7 +427,7 @@ void Scene_Play::sRender()
 
 		for (float x = nextGridX; x < rightX; x += m_gridSize.x)
 		{
-			drawLine(Vec2(x, 0), Vec2(x, height()), alpha);
+			drawLine(Vec2(x, 0), Vec2(x, (float)height()), alpha);
 		}
 
 		for (float y = 0; y < height(); y += m_gridSize.y)
